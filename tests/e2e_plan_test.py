@@ -125,7 +125,7 @@ E2E: ios pass=1 fail=0 blocked=1 not_run=0 · android pass=1 fail=1 blocked=0 no
 """
 
 
-for f in ("evidence/E1_ios_1.png", "evidence/E1_android_1.xml", "logs/e2.txt"):
+for f in ("evidence/E1_ios_1.png", "evidence/E1_android_1.xml", "logs/e2.txt", "evidence/E1_ios_2.pdf", "evidence/E1_ios_3.mp4"):
     (WORK / f).parent.mkdir(parents=True, exist_ok=True)
     (WORK / f).write_text("x")
 
@@ -233,6 +233,18 @@ expect("PASS cites a missing file", 1, PLAN, "--results", "RES:" + RESULTS.repla
        pattern="evidence file evidence/E1_android_9.xml does not exist")
 expect("defect cites a missing file", 1, PLAN, "--results", "RES:" + RESULTS.replace("- **Evidence:** logs/e2.txt", "- **Evidence:** logs/e9.txt"),
        pattern="BUG-1: evidence file logs/e9.txt does not exist")
+# a pulled result file or a screen recording is evidence too
+expect("PASS cites a pulled PDF", 0, PLAN, "--results", "RES:" + RESULTS.replace("`evidence/E1_ios_1.png`", "evidence/E1_ios_2.pdf"))
+expect("PASS cites a recording", 0, PLAN, "--results", "RES:" + RESULTS.replace("`evidence/E1_ios_1.png`", "evidence/E1_ios_3.mp4"))
+expect("PASS cites a missing PDF", 1, PLAN, "--results", "RES:" + RESULTS.replace("`evidence/E1_ios_1.png`", "evidence/E1_ios_9.pdf"),
+       pattern="evidence file evidence/E1_ios_9.pdf does not exist")
+# the agent writes `NOT RUN: budget`; the reason may sit in the Status cell
+expect("NOT RUN: reason in the status cell", 0, PLAN, "--results", "RES:" + RESULTS.replace("| NOT RUN | no scanned fixture on this phone |", "| NOT RUN: budget | |"))
+expect("BLOCKED: reason in the status cell", 0, PLAN, "--results", "RES:" + RESULTS.replace("| BLOCKED | indexing done before kill (40/40) |", "| BLOCKED: indexing done before kill | |"))
+expect("NOT RUN: with no reason anywhere", 1, PLAN, "--results", "RES:" + RESULTS.replace("| NOT RUN | no scanned fixture on this phone |", "| NOT RUN: | |"),
+       pattern="E3 android: NOT RUN with no reason")
+expect("PASS: is still not a status", 1, PLAN, "--results", "RES:" + RESULTS.replace("| E1 | ios | PASS |", "| E1 | ios | PASS: quick |"),
+       pattern="is not PASS, FAIL, BLOCKED or NOT RUN")
 expect("no hand-off line", 1, PLAN, "--results", "RES:" + RESULTS.replace("E2E: ios", "ios"), pattern="no E2E: hand-off line")
 
 # usage and the shipped template

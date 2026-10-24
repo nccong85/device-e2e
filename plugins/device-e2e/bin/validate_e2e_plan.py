@@ -16,8 +16,8 @@ eyeball on its own plan:
   6. The run steps READY, DRY and DIAG are planned; every case has Min and Order; the device time
      (Min × platforms, run steps included) fits the plan's **Device budget**.
   7. With --results: the header names the build, commit, devices, date and this plan; every case and run step has
-     exactly one row per planned platform with PASS, FAIL, BLOCKED or NOT RUN, a reason for BLOCKED / NOT RUN, and
-     no row for an ID the plan does not have; every case PASS cites an evidence file; every evidence file cited
+     exactly one row per planned platform with PASS, FAIL, BLOCKED or NOT RUN, a reason for BLOCKED / NOT RUN (in the
+     Evidence cell, or after a colon: `NOT RUN: budget`), and no row for an ID the plan does not have; every case PASS cites an evidence file; every evidence file cited
      (a path with a directory, e.g. `evidence/E1_ios_1.png`, relative to the summary) exists; every FAIL cites a
      BUG-n whose defect entry is complete; the `E2E:` line's counts equal the table's.
 
@@ -39,7 +39,7 @@ NUM = re.compile(r"\d+(\.\d+)?")
 HEADER = ("Build", "Commit", "Devices", "Date", "Plan")
 DEFECT_FIELDS = ("Case", "Build", "Device", "Severity", "Steps", "Expected", "Actual", "Evidence", "Harness ruled out by")
 TEST_REF = re.compile(r"\S\.[A-Za-z]{1,5}::\s*\S")
-EVIDENCE_FILE = re.compile(r"[\w.~/-]*/[\w.-]+\.(?:png|jpe?g|xml|json|txt|log|csv)\b", re.I)
+EVIDENCE_FILE = re.compile(r"[\w.~/-]*/[\w.-]+\.(?:png|jpe?g|heic|gif|xml|json|txt|log|csv|pdf|mp4|mov)\b", re.I)
 UNWRITTEN = re.compile(r"\bto be (created|written|added)\b|\bTODO\b|\bTBD\b|\bnot yet\b|\bplanned\b|\bmissing\b", re.I)
 
 findings = []
@@ -335,6 +335,11 @@ def main(argv):
                 cid, plat = clean(cell(row, ii)), clean(cell(row, pi)).lower()
                 status = re.sub(r"\s+", " ", clean(cell(row, si)).upper())
                 evidence = clean(cell(row, ei))
+                m = re.fullmatch(r"(BLOCKED|NOT RUN)\s*:\s*(.*)", status)
+                if m:  # `NOT RUN: budget` carries its reason in the Status cell
+                    status = m.group(1)
+                    reason = clean(cell(row, si)).split(":", 1)[1].strip()
+                    evidence = f"{reason} {evidence}".strip()
                 if cid not in known:
                     find(R, f"{cid} is not in the plan; add the case to the plan first")
                     continue
