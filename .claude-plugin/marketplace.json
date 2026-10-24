@@ -1,0 +1,16 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "device-e2e",
+  "description": "Real-device end-to-end testing for Claude Code on a physical iPhone (WebDriverAgent) and Android phone (adb + uiautomator).",
+  "owner": {
+    "name": "Nguyen Chi Cong"
+  },
+  "plugins": [
+    {
+      "name": "device-e2e",
+      "source": "./plugins/device-e2e",
+      "description": "Real-device e2e testing on a physical iPhone (WebDriverAgent) and Android phone (adb): the device-tester agent, its skill, and Python drivers.",
+      "category": "development"
+    }
+  ]
+}
