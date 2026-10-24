@@ -30,3 +30,8 @@ ISTQB glossary (CTFL v4.0.1, CTAL-TA v4.0).
 | Smoke test | One main path per area the change does not touch. |
 | Evidence | A file in `evidence/` next to the results summary (screenshot, UI-tree dump, the app's file, a result file or log), cited by its path. A sentence is not evidence. |
 | Severity | S1 data loss or crash · S2 feature broken · S3 degraded, with a workaround · S4 cosmetic. |
+| Priority | How soon to fix, set apart from severity: P1 before release · P2 in this release · P3 next release · P4 when convenient. |
+| Exit criteria | What the results must show for the build to ship; the plan's `X1` to `X3` and any it adds. |
+| Verdict | The summary's call on the build: `go` (every exit criterion met), `no-go` (a High case failed or an S1/S2 is open), `go with risks` (the owner ships with the risks under *Residual risk*). |
+| Residual risk | What a basis Ref still risks after the run: not proven, failed, or not covered, with who accepts it. |
+| Test completion report | The results summary: verdict, metrics, results, defects, deviations, residual risk and lessons learned (CTFL v4 §5.3.2, ISO/IEC/IEEE 29119-3). |

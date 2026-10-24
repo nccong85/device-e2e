@@ -112,10 +112,21 @@ before the run stays awake after it.
 
 ## Report
 
-Write the results summary where `project.md` says, in the plan template's results layout: a header (build,
-commit, devices, date, plan), one row per planned case and run step per platform with `PASS`, `FAIL`, `BLOCKED`
-or `NOT RUN` and the evidence (numbers, not adjectives, plus the `evidence/<ID>_<platform>_<n>` file they were
-read from) or the reason, a `BUG-n` entry for every FAIL, what was
-**not** verified, and the `E2E:` counts. A run that did not meet the plan's condition is `BLOCKED`. Then run `validate_e2e_plan.py <plan> --results <summary>` until it exits 0. Delete the result files of aborted
+Write the results summary where `project.md` says, in the plan template's results layout. It is the test
+completion report of CTFL v4 §5.3.2 and ISO/IEC/IEEE 29119-3, written for the person who decides the release:
+- a header (build, commit, devices, date, plan, tester);
+- *Summary*: the **Verdict** (`go`, `no-go` or `go with risks`) and each of the plan's exit criteria, met or not
+  met, with the IDs that decide it;
+- *Metrics* per platform: cases planned and run, the four statuses, basis Refs proven, defects by severity,
+  device minutes planned and used;
+- *Results*: one row per planned case and run step per platform with `PASS`, `FAIL`, `BLOCKED` or `NOT RUN` and
+  the deciding numbers with the `evidence/<ID>_<platform>_<n>` file they were read from, or the reason; at most
+  400 characters, with the rest under *Case log*;
+- a `BUG-n` entry for every FAIL (the CTFL §5.5 defect report: observed, reporter, severity, priority, status,
+  reproducibility, steps, expected, actual, evidence, how the harness was ruled out);
+- *Deviations and impediments*: time planned and used, every case that overran, was cut or retried, and what got
+  in the way;
+- *Residual risk*: a row per H and M basis Ref, proven or what is still at risk and who accepts it;
+- what was **not** verified, *Lessons learned* for the next run, the result files and the `E2E:` counts. A run that did not meet the plan's condition is `BLOCKED`. Then run `validate_e2e_plan.py <plan> --results <summary>` until it exits 0. Delete the result files of aborted
 runs so they do not read as results; keep their evidence files, which a retry's `harness: <cause>` cites (the
 numbers then have a gap, which is expected).

@@ -105,6 +105,14 @@ PLAN = """# E2E test plan: resume
 | Ref or item | Why | Risk accepted by |
 |---|---|---|
 | E3 ios | Android-only code | owner, 2026-10-18 |
+
+## Exit criteria
+
+| ID | Criterion |
+|---|---|
+| X1 | Every High case is PASS on each of its platforms |
+| X2 | No S1 or S2 defect is open |
+| X3 | Every H or M basis Ref the run did not prove is listed under Residual risk |
 """
 
 RESULTS = """# Results
@@ -114,6 +122,27 @@ RESULTS = """# Results
 **Devices:** iPhone 13, iOS 18.6 · Redmi 15C, Android 15
 **Date:** 2026-10-18
 **Plan:** docs/plan.md
+**Tester:** device-tester agent
+
+## Summary
+
+**Verdict:** no-go: indexing does not resume after an OS kill on Android.
+
+| Exit criterion | Result | Because |
+|---|---|---|
+| X1 | not met | E2 ios BLOCKED, E2 android FAIL |
+| X2 | not met | BUG-1 S2 open |
+| X3 | met | CH-1 under Residual risk |
+
+Resume after Home works on both phones; resume after an OS kill fails on Android.
+
+## Metrics
+
+| Measure | ios | android |
+|---|---|---|
+| Cases planned / run | 2 / 1 | 3 / 2 |
+
+## Results
 
 | ID | Platform | Status | Evidence |
 |---|---|---|---|
@@ -135,12 +164,32 @@ RESULTS = """# Results
 - **Case:** E2 android
 - **Build:** 1.1.4 (57)
 - **Device:** Redmi 15C, Android 15
+- **Observed:** 2026-10-18 10:42
+- **Reporter:** device-tester agent
 - **Severity:** S2 feature broken
+- **Priority:** P1 fix before release
+- **Status:** open
+- **Reproducibility:** 2 of 2 attempts
 - **Steps:** 1. import 40 pages 2. Home at 10 3. am kill 4. relaunch
 - **Expected:** 40/40 within 120 s
 - **Actual:** 10/40 after 120 s
 - **Evidence:** logs/e2.txt
 - **Harness ruled out by:** logcat shows am_proc_died then wm_on_resume
+
+## Deviations and impediments
+- Time: planned 110 min, used 96 min, of the 150 min Device budget
+- E2 ios: indexing finished before the kill; no workaround on this phone
+
+## Residual risk
+
+| Ref | Risk | Status | What is still at risk | Accepted by |
+|---|---|---|---|---|
+| G1 | H | failed: BUG-1 | resume after OS kill on Android | open: the owner decides |
+| BUD-1s | M | proven: E1 PASS ios, android | none | n/a |
+| CH-1 | M | not proven: E3 NOT RUN android | Otsu on scanned pages | open: the owner decides |
+
+## Lessons learned
+- Stage a 300-page file for E2 on iOS: 40 pages finish before the kill.
 
 ## Not verified
 - E2 ios: indexing finished before the kill, so resume after OS kill is not shown on iOS
@@ -221,8 +270,8 @@ expect("planned id missing from results", 1, PLAN, "--results", "RES:" + RESULTS
        pattern="E3 android: planned but has no row")
 expect("blocked without reason", 1, PLAN, "--results", "RES:" + RESULTS.replace("| BLOCKED | indexing done before kill (40/40) |", "| BLOCKED | |"),
        pattern="E2 ios: BLOCKED with no reason")
-expect("result outside the plan", 1, PLAN, "--results", "RES:" + RESULTS.replace("\n\n## Defects", "\n| X1 | ios | PASS | found a bug |\n\n## Defects"),
-       pattern="X1 is not in the plan")
+expect("result outside the plan", 1, PLAN, "--results", "RES:" + RESULTS.replace("\n\n## Defects", "\n| E9 | ios | PASS | found a bug |\n\n## Defects"),
+       pattern="E9 is not in the plan")
 expect("bad status", 1, PLAN, "--results", "RES:" + RESULTS.replace("| E1 | ios | PASS |", "| E1 | ios | PASS (quick) |"),
        pattern="is not PASS, FAIL, BLOCKED or NOT RUN")
 expect("no results table", 1, PLAN, "--results", "RES:# nothing\n", pattern="no results table")
@@ -257,6 +306,48 @@ expect("PASS cites a missing file", 1, PLAN, "--results", "RES:" + RESULTS.repla
        pattern="evidence file evidence/E1_android_9.xml does not exist")
 expect("defect cites a missing file", 1, PLAN, "--results", "RES:" + RESULTS.replace("- **Evidence:** logs/e2.txt", "- **Evidence:** logs/e9.txt"),
        pattern="BUG-1: evidence file logs/e9.txt does not exist")
+# 9. completion report (CTFL v4 §5.3.2, ISO/IEC/IEEE 29119-3)
+expect("plan without exit criteria", 1, PLAN.split("## Exit criteria")[0], pattern="no '## Exit criteria' section")
+expect("plan drops X2", 1, PLAN.replace("| X2 | No S1 or S2 defect is open |\n", ""), pattern="Exit criteria has no X2")
+expect("no tester header", 1, PLAN, "--results", "RES:" + RESULTS.replace("**Tester:** device-tester agent\n", ""),
+       pattern="header **Tester:** is missing")
+expect("no verdict", 1, PLAN, "--results", "RES:" + RESULTS.replace("**Verdict:** no-go:", "Outcome:"),
+       pattern="Summary has no '**Verdict:**")
+expect("exit criterion row missing", 1, PLAN, "--results", "RES:" + RESULTS.replace("| X3 | met | CH-1 under Residual risk |\n", ""),
+       pattern="Summary: exit criterion X3 has no row")
+expect("X1 met while a High case failed", 1, PLAN, "--results", "RES:" + RESULTS.replace("| X1 | not met |", "| X1 | met |"),
+       pattern="Summary: X1 says met, but E2 android is FAIL")
+expect("X2 met with an open S2", 1, PLAN, "--results", "RES:" + RESULTS.replace("| X2 | not met |", "| X2 | met |"),
+       pattern="Summary: X2 says met, but BUG-1 is an open S1/S2")
+expect("X2 met once the S2 is closed", 0, PLAN, "--results",
+       "RES:" + RESULTS.replace("| X2 | not met |", "| X2 | met |").replace("- **Status:** open", "- **Status:** closed"))
+expect("go with criteria not met", 1, PLAN, "--results", "RES:" + RESULTS.replace("**Verdict:** no-go:", "**Verdict:** go:"),
+       pattern="Verdict go, but X1, X2 not met")
+expect("go with an unaccepted risk", 1, PLAN, "--results", "RES:" + RESULTS.replace("**Verdict:** no-go:", "**Verdict:** go:"),
+       pattern="Verdict go, but CH-1 is 'not proven: e3 not run android' and nobody accepted the risk")
+expect("go with risks is allowed", 0, PLAN, "--results", "RES:" + RESULTS.replace("**Verdict:** no-go:", "**Verdict:** go with risks:"))
+expect("no residual risk row for an M ref", 1, PLAN, "--results",
+       "RES:" + RESULTS.replace("| BUD-1s | M | proven: E1 PASS ios, android | none | n/a |\n", ""),
+       pattern="Residual risk: M Ref BUD-1s has no row")
+expect("proven while a tracing case failed", 1, PLAN, "--results",
+       "RES:" + RESULTS.replace("| G1 | H | failed: BUG-1 |", "| G1 | H | proven: E1 |"),
+       pattern="Residual risk: G1 says proven, but E2 is not PASS on every platform")
+for name in ("Metrics", "Deviations and impediments", "Residual risk", "Lessons learned", "Summary"):
+    head = f"## {name}\n"
+    i = RESULTS.index(head); j = RESULTS.index("\n## ", i + 1)
+    expect(f"no {name} section", 1, PLAN, "--results", "RES:" + RESULTS[:i] + RESULTS[j + 1:],
+           pattern=f"no '## {name}' section")
+expect("defect without priority", 1, PLAN, "--results", "RES:" + RESULTS.replace("- **Priority:** P1 fix before release\n", ""),
+       pattern="BUG-1: field **Priority:** is missing")
+expect("bad priority", 1, PLAN, "--results", "RES:" + RESULTS.replace("P1 fix before release", "urgent"),
+       pattern="Priority must be P1 to P4")
+expect("bad defect status", 1, PLAN, "--results", "RES:" + RESULTS.replace("- **Status:** open", "- **Status:** new"),
+       pattern="Status must be open, deferred")
+expect("reproducibility not n of m", 1, PLAN, "--results", "RES:" + RESULTS.replace("2 of 2 attempts", "always"),
+       pattern="Reproducibility must be 'n of m attempts'")
+expect("evidence cell too long", 1, PLAN, "--results",
+       "RES:" + RESULTS.replace("640 ms, `evidence/E1_ios_1.png`", "640 ms, " + "reading " * 60 + "`evidence/E1_ios_1.png`"),
+       pattern="E1 ios: Evidence cell over 400 characters")
 # a pulled result file or a screen recording is evidence too
 expect("PASS cites a pulled PDF", 0, PLAN, "--results", "RES:" + RESULTS.replace("`evidence/E1_ios_1.png`", "evidence/E1_ios_2.pdf"))
 expect("PASS cites a recording", 0, PLAN, "--results", "RES:" + RESULTS.replace("`evidence/E1_ios_1.png`", "evidence/E1_ios_3.mp4"))

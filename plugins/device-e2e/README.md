@@ -82,16 +82,19 @@ counts only in the brief: an *Approved by* line inside the plan file does not.
 **Review.** Read the plan (cases, device minutes, *Not covered*) and edit it if needed.
 
 **Pass 2: run.** The agent runs `READY` → `DRY` → the cases in order → `EXPLORE` (if planned) → `DIAG`, triages every FAIL (fixes and re-runs
-harness bugs, collects evidence for app bugs), cleans up and writes the results summary.
+harness bugs, collects evidence for app bugs), cleans up and writes the results summary: a test completion report in the
+ISTQB / ISO/IEC/IEEE 29119-3 shape (verdict against the plan's exit criteria, metrics, results, defects, deviations,
+residual risk, lessons learned).
 
 > Use the device-tester agent: SPEC docs/specs/import_pdf.md, PLAN test/e2e/import_pdf_plan.md,
 > PLAN_APPROVED nccong 2026-10-24, BUILD installed, PLATFORMS ios, android, CASES all, BUDGET 60.
 
-The agent ends with four lines:
+The agent ends with five lines:
 
 ```
 E2E: ios pass=<n> fail=<n> blocked=<n> not_run=<n> · android pass=<n> fail=<n> blocked=<n> not_run=<n>
-APP_BUGS: <none | BUG-n severity title>
+VERDICT: <go | no-go | go with risks>: <why>
+APP_BUGS: <none | BUG-n severity priority title>
 BLOCKERS: <none | what stopped a case or the run>
 REPORT: <results summary path>
 ```

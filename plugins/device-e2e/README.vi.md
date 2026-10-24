@@ -81,16 +81,19 @@ tính khi nằm trong brief: dòng *Approved by* trong file plan không được
 **Duyệt.** Đọc plan (các case, số phút máy, mục *Not covered*), sửa nếu cần.
 
 **Lượt 2: chạy.** Agent chạy `READY` → `DRY` → các case theo thứ tự → `EXPLORE` (nếu có trong plan) → `DIAG`, phân loại mọi FAIL (lỗi harness thì tự
-sửa và chạy lại, lỗi app thì gom bằng chứng), dọn dẹp và ghi file kết quả.
+sửa và chạy lại, lỗi app thì gom bằng chứng), dọn dẹp và ghi file kết quả: một test completion report theo
+ISTQB / ISO/IEC/IEEE 29119-3 (kết luận go/no-go so với exit criteria của plan, số liệu, kết quả, lỗi, sai lệch so
+với plan, rủi ro còn lại, bài học).
 
 > Dùng agent device-tester: SPEC docs/specs/import_pdf.md, PLAN test/e2e/import_pdf_plan.md,
 > PLAN_APPROVED nccong 2026-10-24, BUILD installed, PLATFORMS ios, android, CASES all, BUDGET 60.
 
-Agent kết thúc bằng bốn dòng:
+Agent kết thúc bằng năm dòng:
 
 ```
 E2E: ios pass=<n> fail=<n> blocked=<n> not_run=<n> · android pass=<n> fail=<n> blocked=<n> not_run=<n>
-APP_BUGS: <none | BUG-n mức độ tiêu đề>
+VERDICT: <go | no-go | go with risks>: <lý do>
+APP_BUGS: <none | BUG-n mức độ ưu tiên tiêu đề>
 BLOCKERS: <none | điều đã chặn case hoặc lượt chạy>
 REPORT: <đường dẫn file kết quả>
 ```

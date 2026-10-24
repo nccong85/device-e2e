@@ -80,16 +80,18 @@ RESULTS: <結果ファイルのパス> (既定: project.md のパス)
 **レビュー。** plan (ケース、実機の使用時間、*Not covered*) を読み、必要なら修正します。
 
 **2 回目: 実行。** エージェントは `READY` → `DRY` → 順番どおりのケース → `EXPLORE` (計画にある場合) → `DIAG` を実行し、すべての FAIL を切り分け
-(ハーネスのバグは直して再実行、アプリのバグは証拠を集める)、後片付けをして結果ファイルを書きます。
+(ハーネスのバグは直して再実行、アプリのバグは証拠を集める)、後片付けをして結果ファイルを書きます。結果ファイルは ISTQB / ISO/IEC/IEEE 29119-3
+の形のテスト完了報告書です (計画の終了基準に対する判定 go/no-go、メトリクス、結果、不具合、計画との差異、残存リスク、教訓)。
 
 > device-tester エージェントで: SPEC docs/specs/import_pdf.md, PLAN test/e2e/import_pdf_plan.md,
 > PLAN_APPROVED nccong 2026-10-24, BUILD installed, PLATFORMS ios, android, CASES all, BUDGET 60.
 
-エージェントは最後に次の 4 行を返します:
+エージェントは最後に次の 5 行を返します:
 
 ```
 E2E: ios pass=<n> fail=<n> blocked=<n> not_run=<n> · android pass=<n> fail=<n> blocked=<n> not_run=<n>
-APP_BUGS: <none | BUG-n 重大度 タイトル>
+VERDICT: <go | no-go | go with risks>: <理由>
+APP_BUGS: <none | BUG-n 重大度 優先度 タイトル>
 BLOCKERS: <none | ケースや実行を止めたもの>
 REPORT: <結果ファイルのパス>
 ```

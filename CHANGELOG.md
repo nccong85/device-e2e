@@ -4,6 +4,14 @@ All notable changes are documented here. Versions follow [Semantic Versioning](h
 
 ## Unreleased
 
+- The results summary is a test completion report (CTFL v4.0.1 §5.3.2 and §5.5, ISO/IEC/IEEE 29119-3 §7.4):
+  a **Tester** header line; *Summary* with a **Verdict** (`go`, `no-go`, `go with risks`) and each exit
+  criterion met or not met; *Metrics*; Results cells of at most 400 characters with the detail under *Case log*;
+  defect reports with Observed, Reporter, Priority (P1–P4), Status and Reproducibility; *Deviations and
+  impediments*; *Residual risk* per H and M basis Ref; *Lessons learned*. Plans gain *Exit criteria* (X1 to X3).
+  The device-tester hand-off adds a `VERDICT:` line and shows each bug's priority. `validate_e2e_plan.py` checks
+  the verdict against the results (a criterion marked met that the results contradict; `go` with a criterion not
+  met or a Ref at risk that nobody accepted). Older plans and results summaries fail until updated.
 - Evidence capture: `harness/evidence.py` names files `evidence/<ID>_<platform>_<n>.<ext>` without overwriting
   an earlier run, and saves a screenshot, the UI tree, a screenshot series or a FAIL bundle. Both drivers gain
   `dump_tree`, `visible`, `log_mark` and `device_log` (Android: logcat since the mark; iOS: the app's crash

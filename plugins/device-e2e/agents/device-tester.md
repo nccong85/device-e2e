@@ -82,9 +82,13 @@ inside a file, does not count. If `SPEC`, `PLAN`, `PLATFORMS` or `BUDGET` is mis
 4. Run the cases in `CASES` by `Order`, and stop at a case boundary when `BUDGET` runs out (the rest is
    `NOT RUN: budget`). Triage every FAIL/BLOCKED. Re-run the cases where you fixed the harness. Then `EXPLORE`
    if the plan has it (its charter, its time box), then `DIAG`.
-5. Clean up. Write the results summary in `RESULTS` with the plan template's results layout: the header, one row
-   per planned ID and run step per platform (`PASS`/`FAIL`/`BLOCKED`/`NOT RUN` with evidence or reason), a
-   `BUG-n` entry for every FAIL, what was **not** verified (every High case that is not PASS or FAIL opens a line `- <ID> <platform>: <why>`), the per-run result files, and the `E2E:` line. A bug
+5. Clean up. Write the results summary in `RESULTS` with the plan template's results layout (a test completion
+   report): the header with the tester, *Summary* with the verdict and each exit criterion met or not met,
+   *Metrics*, one row per planned ID and run step per platform (`PASS`/`FAIL`/`BLOCKED`/`NOT RUN` with the
+   deciding numbers and files, or the reason; detail under *Case log*), a `BUG-n` entry for every FAIL, the
+   *Deviations and impediments*, *Residual risk* per H and M Ref, what was **not** verified (every High case that
+   is not PASS or FAIL opens a line `- <ID> <platform>: <why>`), *Lessons learned*, the per-run result files, and
+   the `E2E:` line. The verdict is yours to state, not to soften: `go` only when every exit criterion is met. A bug
    found outside the plan gets a case in the plan first. Run `validate_e2e_plan.py <plan> --results <summary>`
    until it exits 0. Delete the result files of aborted runs (the suite's JSON or CSV), not their evidence
    files: a retry's `harness: <cause>` cites them.
@@ -93,7 +97,8 @@ inside a file, does not count. If `SPEC`, `PLAN`, `PLATFORMS` or `BUDGET` is mis
 End with exactly:
 ```
 E2E: ios pass=<n> fail=<n> blocked=<n> not_run=<n> · android pass=<n> fail=<n> blocked=<n> not_run=<n>
-APP_BUGS: <none | BUG-n severity title, one per line>
+VERDICT: <go | no-go | go with risks>: <the summary's sentence>
+APP_BUGS: <none | BUG-n severity priority title, one per line>
 BLOCKERS: <none | what stopped a case or the run, one per line>
 REPORT: <path to the results summary>
 ```

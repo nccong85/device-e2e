@@ -102,6 +102,17 @@ it fail there, before that case's result is read; the marker ends the *Made to f
 |---|---|---|
 | <CH-3> | <no iPhone with a passcode-free setup> | <owner, date> |
 
+## Exit criteria
+
+What the results must show for the build to ship (CTFL §5.3.2: the completion report evaluates the build against
+them). Keep these three; add a row for a criterion the spec or the owner sets.
+
+| ID | Criterion |
+|---|---|
+| X1 | Every High case is PASS on each of its platforms |
+| X2 | No S1 or S2 defect is open |
+| X3 | Every H or M basis Ref the run did not prove is listed under *Residual risk* with who accepts it |
+
 ## Review checklist
 
 - [ ] Every basis Ref is in a case, in *Covered below e2e*, or in *Not covered*; every case traces to a Ref.
@@ -120,14 +131,20 @@ it fail there, before that case's result is read; the marker ends the *Made to f
       costs seconds); Order puts High risk first; costly setup is shared, or the
       precondition says why a case needs its own.
 - [ ] Every pushed-down test exists today (`file::name`), none "to be created".
+- [ ] *Exit criteria* keeps X1 to X3; an added criterion names a number or a state that can fail it.
 
 ## Results
 
-The results summary (path in `project.md`) has this layout. `validate_e2e_plan.py <plan> --results <summary>`
-checks it. Status words are defined in `references/glossary.md`. Evidence files go in `evidence/` next to the
-summary, named `<ID>_<platform>_<n>.<ext>` (screenshot, UI-tree dump, the app's diagnostics file, a pulled result
-file, a log). Every case PASS cites at least one of them by its path; a number read on the device goes in the cell
-next to the file it was read from.
+The results summary (path in `project.md`) is the test completion report (CTFL v4 §5.3.2, ISO/IEC/IEEE 29119-3
+§7.4) and holds the defect reports (CTFL §5.5; 29119-3 calls them incident reports).
+`validate_e2e_plan.py <plan> --results <summary>` checks it. Status words are defined in `references/glossary.md`.
+Evidence files go in `evidence/` next to the summary, named `<ID>_<platform>_<n>.<ext>` (screenshot, UI-tree dump,
+the app's diagnostics file, a pulled result file, a log). Every case PASS cites at least one of them by its path;
+a number read on the device goes next to the file it was read from.
+
+The reader decides from *Summary* and *Residual risk*; the rest is the record behind them. A Results cell holds
+the deciding numbers and their files (at most 400 characters); the steps, timings and every other reading go
+under *Case log*.
 
 ```markdown
 # E2E results: <feature>, <YYYY-MM-DD>
@@ -137,11 +154,41 @@ next to the file it was read from.
 **Devices:** <iPhone model, iOS x.y · Android model, Android x>
 **Date:** <YYYY-MM-DD>
 **Plan:** <path to this plan>
+**Tester:** <who ran it: the device-tester agent, the session or the person>
+
+## Summary
+
+**Verdict:** <go · no-go · go with risks>: <one sentence: what the build can and cannot be trusted with>
+
+| Exit criterion | Result | Because |
+|---|---|---|
+| X1 | <met · not met> | <the IDs that decide it> |
+| X2 | <met · not met> | <BUG-n, or "no S1/S2 defect"> |
+| X3 | <met · not met> | <the Refs under Residual risk> |
+
+<Two or three sentences: what was tested, on what, and what the result means for the release.>
+
+## Metrics
+
+| Measure | ios | android |
+|---|---|---|
+| Cases planned / run (PASS or FAIL) | <5 / 5> | <5 / 4> |
+| PASS · FAIL · BLOCKED · NOT RUN | <5 · 0 · 0 · 0> | <4 · 0 · 0 · 1> |
+| Basis Refs proven / traced to a case | <6 / 7> | <6 / 7> |
+| Defects S1 · S2 · S3 · S4 | <0 · 0 · 1 · 0> | <0 · 0 · 0 · 0> |
+| Device minutes planned / used | <24 / 28.4> | <24 / 31> |
+
+## Results
 
 | ID | Platform | Status | Min | Evidence |
 |---|---|---|---|---|
 | READY | ios | PASS | <4> | <what was checked> |
-| E1 | ios | <PASS · FAIL · BLOCKED · NOT RUN> | <minutes it took> | <numbers and evidence/E1_ios_1.png; BUG-n for a FAIL; the reason for BLOCKED or NOT RUN; every retry and its harness: cause> |
+| E1 | ios | <PASS · FAIL · BLOCKED · NOT RUN> | <minutes it took> | <the deciding numbers and evidence/E1_ios_1.png; BUG-n for a FAIL; the reason for BLOCKED or NOT RUN; every retry and its harness: cause> |
+
+## Case log
+
+### E1 ios
+<the steps as run, the timings, every reading with its file; a retry and why>
 
 ## Defects
 
@@ -149,16 +196,36 @@ next to the file it was read from.
 - **Case:** <E1 ios>
 - **Build:** <version>
 - **Device:** <model, OS>
+- **Observed:** <YYYY-MM-DD HH:MM, device time>
+- **Reporter:** <the tester, as in the header>
 - **Severity:** <S1 data loss or crash · S2 feature broken · S3 degraded · S4 cosmetic>
+- **Priority:** <P1 fix before release · P2 fix in this release · P3 next release · P4 when convenient>
+- **Status:** <open · deferred · duplicate of BUG-n · awaiting confirmation · closed · rejected>
+- **Reproducibility:** <n of m attempts, from a fresh state>
 - **Steps:** <numbered, from a fresh state>
 - **Expected:** <the plan's Expected>
 - **Actual:** <numbers, what the screen showed>
 - **Evidence:** <evidence/ paths: screenshot, logcat, diagnostics>
 - **Harness ruled out by:** <screenshot at the failure, activity log, independent check of the file>
 
+## Deviations and impediments
+- Time: <planned N min, used M min, of the B min Device budget>
+- <ID platform: how the run differed from the plan (overran, cut, re-ordered, retried with its harness: cause)>
+- Impediment: <what got in the way> → <the workaround, or "none: the case is BLOCKED">
+
+## Residual risk
+
+| Ref | Risk | Status | What is still at risk | Accepted by |
+|---|---|---|---|---|
+| G1 | H | proven: E1 PASS ios, android | <none> | <n/a> |
+| CH-2 | M | <not proven: E4 NOT RUN android · failed: BUG-1 · below: <test> · not covered> | <what a user could still hit> | <owner, date, or "open: the owner decides"> |
+
 ## Not verified
 - <ID> <platform>: <why: every High case that is not PASS or FAIL on that platform opens a line like this>
 - <anything else the run could not show, and why>
+
+## Lessons learned
+- <what to change in the plan, the harness or project.md before the next run, with the number that showed it>
 
 ## Result files
 - <per-run result files; aborted runs' result files deleted, their evidence kept for the `harness:` cause>
@@ -166,4 +233,7 @@ next to the file it was read from.
 E2E: ios pass=<n> fail=<n> blocked=<n> not_run=<n> · android pass=<n> fail=<n> blocked=<n> not_run=<n>
 ```
 
-The counts are over the cases, not the run steps.
+The counts are over the cases, not the run steps. *Residual risk* has a row for every H and M basis Ref; `proven`
+needs every case that traces to the Ref to be PASS on each of its platforms. The **Verdict** is `go` only when
+every exit criterion is met and no Ref is left at risk without an owner's name; `no-go` when X1 or X2 is not met
+because of a defect.

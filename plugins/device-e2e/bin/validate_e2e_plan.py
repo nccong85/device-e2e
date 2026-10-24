@@ -34,6 +34,13 @@ eyeball on its own plan:
      (`- E1 ios: <why>`); the `E2E:` line's counts equal the table's; a PASS that mentions a
      retry names its `harness:` cause; with a Min column, a PASS under a quarter of the planned Min is flagged;
      every High case that is not PASS or FAIL on a platform is named under *Not verified*.
+  8. The plan has *Exit criteria* X1 to X3. With --results, the summary is a completion report (CTFL v4 §5.3.2,
+     ISO/IEC/IEEE 29119-3): a **Tester:** header; *Summary* with a **Verdict:** (go, no-go, go with risks) and a
+     met / not met row per exit criterion, X1 and X2 checked against the table and the defects; *Metrics*;
+     *Deviations and impediments*; *Residual risk* with a row per H and M Ref, `proven` only when every case
+     tracing to it is PASS; *Lessons learned*. A go verdict has every criterion met and every unproven Ref accepted
+     by someone. Defects add Observed, Reporter, Priority P1-P4, Status and Reproducibility (n of m). A Results
+     Evidence cell is at most 400 characters (the rest goes under *Case log*).
 
 Exit 0 = no finding. Exit 1 = at least one finding. Exit 2 = usage error or unreadable file.
 A cell is one `|`-separated field; a cell that is a whole `<…>` slot is unfilled.
@@ -61,8 +68,16 @@ ARROW = re.compile(r"\s*(?:→|->)\s*")
 ORACLE_CHECK = re.compile(r"^(old build|mutation|fault|baseline)\s*:\s*\S", re.I)
 RETRY = re.compile(r"\bretr(y|ies|ied)\b|\bre-?ran\b|\bsecond attempt\b", re.I)
 NUM = re.compile(r"\d+(\.\d+)?")
-HEADER = ("Build", "Commit", "Devices", "Date", "Plan")
-DEFECT_FIELDS = ("Case", "Build", "Device", "Severity", "Steps", "Expected", "Actual", "Evidence", "Harness ruled out by")
+HEADER = ("Build", "Commit", "Devices", "Date", "Plan", "Tester")
+# CTFL v4 §5.5 / ISO/IEC/IEEE 29119-3 incident report, plus how often it reproduced.
+DEFECT_FIELDS = ("Case", "Build", "Device", "Observed", "Reporter", "Severity", "Priority", "Status", "Reproducibility",
+                 "Steps", "Expected", "Actual", "Evidence", "Harness ruled out by")
+DEFECT_STATUS = re.compile(r"\s*(open|deferred|duplicate|awaiting confirmation|closed|rejected)\b", re.I)
+CLOSED = ("closed", "rejected", "duplicate")
+EXIT_CRITERIA = ("X1", "X2", "X3")  # the template's; a plan may add more
+VERDICT = re.compile(r"^\*\*Verdict:\*\*\s*(go with risks|no-go|go)\b", re.I | re.M)
+REPORT_SECTIONS = ("summary", "metrics", "deviations and impediments", "residual risk", "lessons learned")
+CELL_LIMIT = 400  # a Results cell holds the deciding numbers; the rest goes under Case log
 TEST_REF = re.compile(r"\S\.[A-Za-z]{1,5}::\s*\S")
 EVIDENCE_FILE = re.compile(r"[\w.~/\\-]*[/\\][\w.-]+\.(?:png|jpe?g|heic|gif|xml|json|txt|log|csv|pdf|mp4|mov|ips)\b", re.I)
 UNWRITTEN = re.compile(r"\bto be (created|written|added)\b|\bTODO\b|\bTBD\b|\bnot yet\b|\bplanned\b|\bmissing\b", re.I)
@@ -459,6 +474,18 @@ def main(argv):
         if r not in accounted:
             find(P, f"Test basis {r} has no case, no lower-level test and no Not covered line")
 
+    exit_lines = section(secs, "exit criteria")
+    exit_ids = []
+    if exit_lines is None:
+        find(P, "no '## Exit criteria' section (keep X1 to X3 from the template)")
+    else:
+        for header, rows in tables(exit_lines):
+            xi = col(header, "id")
+            exit_ids += [clean(cell(row, xi)) for row in rows if xi is not None]
+        for x in EXIT_CRITERIA:
+            if x not in exit_ids:
+                find(P, f"Exit criteria has no {x} (the template's three stay; add rows for more)")
+
     # ---- results -------------------------------------------------------------
     known = dict(cases)
     for sid in steps:
@@ -492,6 +519,12 @@ def main(argv):
                     find(R, f"{m.group(1)}: field **{f}:** is missing or empty")
             if "Severity" in fields and not re.match(r"\s*S[1-4]\b", fields["Severity"]):
                 find(R, f"{m.group(1)}: Severity must be S1 to S4")
+            if "Priority" in fields and not re.match(r"\s*P[1-4]\b", fields["Priority"]):
+                find(R, f"{m.group(1)}: Priority must be P1 to P4")
+            if "Status" in fields and not DEFECT_STATUS.match(fields["Status"]):
+                find(R, f"{m.group(1)}: Status must be open, deferred, duplicate, awaiting confirmation, closed or rejected")
+            if "Reproducibility" in fields and not re.search(r"\d+\s*(of|/)\s*\d+", fields["Reproducibility"]):
+                find(R, f"{m.group(1)}: Reproducibility must be 'n of m attempts'")
         seen = {}
         found_table = False
         for header, rows in tables(text.splitlines()):
@@ -524,6 +557,9 @@ def main(argv):
                 if status == "PASS" and cid in cases and not EVIDENCE_FILE.search(evidence):
                     find(R, f"{cid} {plat}: PASS cites no evidence file (e.g. evidence/{cid}_{plat}_1.png)")
                 missing_files(f"{cid} {plat}", evidence)
+                if len(clean(cell(row, ei))) > CELL_LIMIT:
+                    find(R, f"{cid} {plat}: Evidence cell over {CELL_LIMIT} characters; keep the deciding numbers and files, "
+                            f"move the rest under '## Case log'")
                 if status == "PASS" and RETRY.search(evidence) and not re.search(r"\bharness\s*:\s*\S", evidence, re.I):
                     find(R, f"{cid} {plat}: PASS after a retry; name the 'harness: <cause>', or it is a FAIL (intermittent)")
                 took = clean(cell(row, mi))
@@ -551,6 +587,66 @@ def main(argv):
             named = re.search(rf"^\s*[-*]\s*[*`]*{re.escape(cid)}[*`]*\s+{plat}\b", not_verified, re.M | re.I)
             if case_risk.get(cid) == "H" and st in ("BLOCKED", "NOT RUN") and not named:
                 find(R, f"{cid} {plat}: High risk and {st}; open a line under '## Not verified' with it: '- {cid} {plat}: <why>'")
+        rsecs = sections(text)
+        for name in REPORT_SECTIONS:
+            body = section(rsecs, name)
+            if body is None or not any(line.strip() for line in body):
+                find(R, f"no '## {name.capitalize()}' section (the completion report layout in the plan template)")
+
+        def passed(cid):
+            return all(seen.get((cid, p)) == "PASS" for p in known[cid][2])
+        open_bad = sorted(b for b, f in defects.items()
+                          if re.match(r"\s*S[12]\b", f.get("Severity", ""))
+                          and not re.match(rf"\s*({'|'.join(CLOSED)})\b", f.get("Status", ""), re.I))
+        actual = {
+            "X1": [f"{c} {p} is {seen.get((c, p), 'missing')}" for c in cases if case_risk.get(c) == "H"
+                   for p in sorted(cases[c][2]) if seen.get((c, p)) != "PASS"],
+            "X2": [f"{b} is an open S1/S2" for b in open_bad],
+        }
+        verdict = VERDICT.search(text)
+        if not verdict:
+            find(R, "Summary has no '**Verdict:** go | no-go | go with risks'")
+        summary = section(rsecs, "summary") or []
+        said = {}
+        for header, rows in tables(summary):
+            xi, ri = col(header, "exit criterion"), col(header, "result")
+            if xi is None or ri is None:
+                continue
+            for row in rows:
+                said[clean(cell(row, xi))] = clean(cell(row, ri)).lower()
+        for x in exit_ids:
+            if x not in said:
+                find(R, f"Summary: exit criterion {x} has no row")
+            elif not re.match(r"(not met|met)\b", said[x]):
+                find(R, f"Summary: exit criterion {x} must be 'met' or 'not met'")
+            elif said[x].startswith("met") and actual.get(x):
+                find(R, f"Summary: {x} says met, but {'; '.join(actual[x][:3])}")
+        residual = section(rsecs, "residual risk") or []
+        rows_by_ref = {}
+        for header, rows in tables(residual):
+            fi, si2, ai = col(header, "ref"), col(header, "status"), col(header, "accepted by")
+            if fi is None or si2 is None:
+                continue
+            for row in rows:
+                rows_by_ref[clean(cell(row, fi))] = (clean(cell(row, si2)).lower(), clean(cell(row, ai)).lower())
+        for ref in refs:
+            if risk.get(ref) not in ("H", "M"):
+                continue
+            if ref not in rows_by_ref:
+                find(R, f"Residual risk: {risk[ref]} Ref {ref} has no row")
+                continue
+            st, acc = rows_by_ref[ref]
+            tracing = [c for c, (traces, _, _) in cases.items() if ref in traces]
+            if st.startswith("proven") and not (tracing and all(passed(c) for c in tracing)):
+                bad = [c for c in tracing if not passed(c)] or ["no case traces to it"]
+                find(R, f"Residual risk: {ref} says proven, but {', '.join(bad)} is not PASS on every platform")
+            if verdict and verdict.group(1).lower() == "go" and not st.startswith(("proven", "below")) \
+                    and (unfilled(acc) or acc.startswith(("open", "n/a"))):
+                find(R, f"Verdict go, but {ref} is '{st}' and nobody accepted the risk")
+        if verdict and verdict.group(1).lower() == "go":
+            unmet = [x for x in exit_ids if said.get(x, "").startswith("not met")]
+            if unmet:
+                find(R, f"Verdict go, but {', '.join(unmet)} not met")
         m = re.search(r"^E2E:.*$", text, re.M)
         if not m:
             find(R, "no E2E: hand-off line")
