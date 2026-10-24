@@ -2,34 +2,105 @@
 
 # device-e2e
 
-End-to-end testing of a mobile app on real devices from a Mac: an iPhone through WebDriverAgent and an Android
-phone through adb + uiautomator. Built while testing e-Scanner on an iPhone 13 and a Redmi 15C; it records the
-traps that cost device time there.
+A plugin for automated end-to-end testing of mobile apps on real devices from a Mac: it drives an iPhone through
+WebDriverAgent and an Android phone through adb + uiautomator.
 
-| Piece | What it does |
+## Components
+
+| Component | Purpose |
 |---|---|
-| `agents/device-tester.md` | Plans cases, drives the phones, triages every FAIL (harness bug or app bug), cleans up, reports PASS/FAIL/BLOCKED with evidence. Changes app code only if the brief says so. |
-| `skills/playbook/` | The procedure: workflow, triage, device rules, cleanup, report. Plus `references/test-design.md` (how to derive cases from the spec so none is missing and none repeats, oracles that can fail, the device-time budget), `references/glossary.md` (one meaning per term, PASS/FAIL/BLOCKED/NOT RUN), `references/ios.md`, `references/android.md`, `references/traps.md`. |
-| `skills/playbook/e2e_test_plan.template.md` | The plan: test basis with risk, factors, State × event table, run steps (`READY`, `DRY`, `DIAG`), cases with device minutes and run order, *Covered below e2e*, *Not covered*; and the results layout: header, table, `BUG-n` defect entries, the `E2E:` line. |
-| `bin/validate_e2e_plan.py` | Checks a plan without a model: every spec goal and basis item has a case, a named lower-level test or a *Not covered* reason; no redundant case; no empty State × event cell; no Expected that cannot fail. The total device time fits the budget. With `--results`: the header names the build and this plan, every planned case and run step has a PASS/FAIL/BLOCKED/NOT RUN row per platform, every case PASS cites an evidence file that exists, every FAIL has a complete `BUG-n`, and the `E2E:` counts match. |
-| `skills/playbook/harness/` | `IosDriver` (WebDriverAgent HTTP) and `AndroidDriver` (adb + uiautomator) share method names and read environment variables: `WDA=http://<ip>:8100` for the iPhone, `E2E_*` for the rest. Python 3 standard library only. |
-| `commands/init.md` | `/device-e2e:init`: creates `.claude/device-e2e/project.md` from the template and lists its unfilled slots. |
-| `skills/playbook/project.template.md` | The project facts the agent needs: devices, app id, build commands, harness paths, cleanup. |
+| `agents/device-tester.md` | **Main executing agent:** Writes the test cases, drives the phones, finds the cause of each failure (tool or app), cleans up after the test and reports the results (PASS/FAIL/BLOCKED) with evidence. *Note: It changes app code only if the brief asks for it.* |
+| `skills/playbook/` | **Procedure and reference docs:** How to run the steps, classify failures, work with the devices and report. Comes with reference docs (`references/`): how to design test cases, a glossary that defines each status (PASS/FAIL/...), separate docs for iOS/Android, and a list of common traps. |
+| `skills/playbook/e2e_test_plan.template.md` | **Test plan template:** A standard format for the inputs, risk assessment, state/event matrix, run steps and the time budget for each case. It also includes the results file template and the defect entry format (`BUG-n`). |
+| `bin/validate_e2e_plan.py` | **Test plan checker:** Runs on its own, without an AI model, to cross-check the test plan. It makes sure every requirement (spec) is covered (or has a clear reason to skip it), there are no redundant cases, no empty states, and the total run time fits the limit. With the `--results` flag, it checks the actual results file against the plan (whether the evidence really exists, whether each bug entry is complete). |
+| `skills/playbook/harness/` | **Device drivers:** `IosDriver` (HTTP calls to WebDriverAgent) and `AndroidDriver` (adb + uiautomator) share the same set of methods. `evidence.py` names and saves the evidence files (screenshot, UI tree, logcat or iOS crash reports, Android screen recording). Configured through environment variables (`WDA` for the iPhone's IP, `E2E_*` for the rest) and uses only the Python 3 standard library. |
+| `commands/init.md` | Holds the `/device-e2e:init` command, which creates the config file `.claude/device-e2e/project.md` from the template and lists what you still need to fill in. |
+| `skills/playbook/project.template.md` | **Project config template:** Where you declare what the agent needs to run (devices, app ID, build commands, harness paths, and how to clean up data). |
 
-## Set up
+## Setup
 
-1. `claude plugin marketplace add nccong85/device-e2e`, then `claude plugin install device-e2e@device-e2e`.
-   Recommended alongside it: `review-gate` from [escanner-agent-kit](https://github.com/nccong85/escanner-agent-kit),
-   whose hook stops the agent running destructive git commands.
-2. Run `/device-e2e:init` in your project. It creates `.claude/device-e2e/project.md` from `project.template.md`
-   (never over an existing one) and lists the slots left to fill.
-3. Build WebDriverAgent once for your iPhone, enable Developer Mode and UI Automation on it, keep it unlocked and
-   on the Mac's Wi-Fi, and make adb see the Android phone (`adb devices`). Steps:
-   [`ios.md`](skills/playbook/references/ios.md), [`android.md`](skills/playbook/references/android.md).
-4. Write your app-flows module and suite on top of the two drivers. The skill explains the shape.
+1. **Install the plugin:** Run `claude plugin marketplace add nccong85/device-e2e`, then
+   `claude plugin install device-e2e@device-e2e`. *(Recommended: also install the `review-gate` plugin from
+   [escanner-agent-kit](https://github.com/nccong85/escanner-agent-kit) for a guard hook that stops the agent running
+   git commands that destroy data.)*
+2. **Initialize the project:** Run `/device-e2e:init` in the project folder. It creates the config file
+   `.claude/device-e2e/project.md` (never over an existing one) and reminds you to fill in what is missing.
+3. **Set up the real devices:**
+   - **iPhone:** Build WebDriverAgent onto the phone once, and enable Developer Mode and UI Automation. Keep the
+     iPhone unlocked and on the same Wi-Fi as the Mac.
+   - **Android:** Plug in the cable and make sure the host (Mac, Linux or Windows; iOS needs a Mac) sees the device (check with `adb devices`).
 
-The agent's brief has fixed lines (`SPEC`, `PLAN`, `PLATFORMS`, `BUDGET`, …), listed in `agents/device-tester.md`.
-Then ask in plain words, e.g. "run the import cases on both phones", or dispatch `device-tester`.
+   Details: [`ios.md`](skills/playbook/references/ios.md), [`android.md`](skills/playbook/references/android.md).
+4. **Write the suite:** Write your app-flows module and suite on top of the two drivers. The skill explains the shape.
+
+## Usage
+
+### How it is invoked
+
+The plugin has three parts, and Claude Code calls each one differently:
+
+| Part | How it is called |
+|---|---|
+| Skill `playbook` | Claude loads it on its own when the request matches the skill's description (test on a real phone, e2e or regression on device, verify a fix on hardware…). Call it directly with `/device-e2e:playbook`. |
+| Agent `device-tester` | The main session delegates to it when the request matches its description. Ask for it by name ("use the device-tester agent …") or type `@agent-device-e2e:device-tester`. The agent preloads the `playbook` skill at startup. |
+| Command `/device-e2e:init` | Runs only when you type it. |
+
+Two facts shape how you write the request:
+
+- **The agent does not see the conversation.** It runs in its own context and gets only the brief the main session
+  writes from your request. Everything it needs (spec, plan, platforms, budget, what you approved) must be in what
+  you type.
+- **The agent cannot ask you questions.** When a fact or an approval is missing it stops with `BLOCKED: …`; the main
+  session tells you, and you send the next request.
+
+### The brief
+
+The agent takes these fixed lines:
+
+```
+SPEC: <spec path>
+PLAN: <plan path> | write (MODE: feature | release)
+PLAN_APPROVED: <owner, YYYY-MM-DD> | none
+BUILD: installed | approved <owner, YYYY-MM-DD>
+PLATFORMS: ios, android | ios | android
+CASES: all | <IDs>
+BUDGET: <device minutes>
+RESULTS: <results summary path> (default: the path in project.md)
+```
+
+Without `SPEC`, `PLAN`, `PLATFORMS` or `BUDGET` the agent stops with `BLOCKED: brief missing <field>`. Approval
+counts only in the brief: an *Approved by* line inside the plan file does not.
+
+### Two passes
+
+**Pass 1: write the plan.** The agent writes the plan, runs `validate_e2e_plan.py` until it exits 0, and stops with
+`BLOCKED: plan <path> needs owner approval` before it touches a device.
+
+> Use the device-tester agent: SPEC docs/specs/import_pdf.md, PLAN write (MODE: feature), PLAN_APPROVED none,
+> BUILD installed, PLATFORMS ios, android, CASES all, BUDGET 60.
+
+**Review.** Read the plan (cases, device minutes, *Not covered*) and edit it if needed.
+
+**Pass 2: run.** The agent runs `READY` → `DRY` → the cases in order → `EXPLORE` (if planned) → `DIAG`, triages every FAIL (fixes and re-runs
+harness bugs, collects evidence for app bugs), cleans up and writes the results summary.
+
+> Use the device-tester agent: SPEC docs/specs/import_pdf.md, PLAN test/e2e/import_pdf_plan.md,
+> PLAN_APPROVED nccong 2026-10-24, BUILD installed, PLATFORMS ios, android, CASES all, BUDGET 60.
+
+The agent ends with four lines:
+
+```
+E2E: ios pass=<n> fail=<n> blocked=<n> not_run=<n> · android pass=<n> fail=<n> blocked=<n> not_run=<n>
+APP_BUGS: <none | BUG-n severity title>
+BLOCKERS: <none | what stopped a case or the run>
+REPORT: <results summary path>
+```
+
+Other common requests: re-run only the failed cases (`CASES: E3, E7`), one platform only (`PLATFORMS: android`),
+allow a rebuild (`BUILD: approved nccong 2026-10-24`, with the build commands in `project.md`).
+
+A short request also works, e.g. "test PDF import on both real phones, spec at docs/specs/import_pdf.md, 60
+minutes". The main session builds the brief, but any line still missing makes the agent report `BLOCKED`.
 
 ## What it will not do
 

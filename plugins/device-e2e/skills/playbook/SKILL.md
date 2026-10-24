@@ -26,13 +26,15 @@ The skill ships two drivers with the same method names, so app flows are written
 |---|---|
 | `${CLAUDE_SKILL_DIR}/harness/wda_driver.py` | `IosDriver`: WebDriverAgent HTTP client (tap, type, drag, source tree, screenshot, file pull) |
 | `${CLAUDE_SKILL_DIR}/harness/adb_driver.py` | `AndroidDriver`: adb + uiautomator dump (same methods, plus fixture staging and IME helpers) |
+| `${CLAUDE_SKILL_DIR}/harness/evidence.py` | `Evidence(driver, case, root=<summary dir>/evidence)`: names files `evidence/<ID>_<platform>_<n>.<ext>` (pass `root`: the results check looks next to the summary, not in the working directory) and saves a screenshot (`shot`), the UI tree (`tree`), a screenshot series (`burst`) or everything a FAIL needs (`failure(since)`) |
+| `${CLAUDE_SKILL_DIR}/harness/procs.py` | `procs.py <text> [--kill]`: list or stop the processes whose command line holds `<text>`, on macOS, Linux and Windows |
 
 They read `E2E_APP_ID`, `WDA`, `E2E_IOS_UDID`, `E2E_ANDROID_SERIAL` and the optional variables listed in
 `project.md` from the environment. On top of them the project keeps its own files (paths in `project.md`):
 
 - an **app-flows** module — navigation, import through the system picker, search, delete, empty trash, language
   switch, diagnostics export — written against the driver interface, never against one platform;
-- a **suite** — test cases plus a result-file writer, run as `python3 -u <suite> ios|android <case ids>`;
+- a **suite** — test cases plus a result-file writer, run as `<python> -u <suite> ios|android <case ids>` with the Python named in `project.md`;
 - optional **fixture** generation and a tiny HTTP server so the iPhone can download fixtures through Safari.
 
 ## Workflow
@@ -54,7 +56,8 @@ They read `E2E_APP_ID`, `WDA`, `E2E_IOS_UDID`, `E2E_ANDROID_SERIAL` and the opti
    step; make each new assertion fail once while you are at it.
 6. **Run long suites in the background** and watch them with a monitor that greps
    `^\[(PASS|FAIL|BLOCKED)\]|progress|Traceback`. Monitors expire; re-arm them. One suite per device at a time;
-   before restarting, make sure the old python process is really gone (`pgrep -fl <suite name>`), because
+   before restarting, make sure the old python process is really gone
+   (`<python> ${CLAUDE_SKILL_DIR}/harness/procs.py <suite name>`, which works where `pgrep` is missing), because
    stopping the monitor does not stop the suite.
 7. **Triage every FAIL/BLOCKED before reporting it** (below). Fix harness bugs and re-run the case. For an app
    bug, collect the evidence and report it; when you run as the `device-tester` agent you do not fix the app.
@@ -67,6 +70,13 @@ checks, the app's own record) are in `references/test-design.md`, with the proce
 before writing or changing a case.
 
 ## Triage: harness bug or app bug?
+
+Take `mark = driver.log_mark()` before each case and call `Evidence(driver, case).failure(mark)` on a FAIL: it
+saves the screenshot, the UI tree and the device log since the mark (Android: logcat main, system and crash;
+iOS: the app's crash reports from `devicectl`, since WDA cannot read a real iPhone's system log). To film a
+transition on Android, `with driver.recording(ev.path("mp4")):` (screenrecord, at most 180 s, no audio, with a
+timestamp overlay); on iOS use `ev.burst(n, seconds)`, since WDA cannot hand back a recording from a real
+device.
 
 Before calling anything an app bug, look at a screenshot taken at the failure and, on Android, the activity log:
 `adb logcat -b events -d | grep -E "wm_on_(resume|paused|stop|destroy)|am_proc_died|wm_finish"`.
@@ -107,4 +117,5 @@ commit, devices, date, plan), one row per planned case and run step per platform
 or `NOT RUN` and the evidence (numbers, not adjectives, plus the `evidence/<ID>_<platform>_<n>` file they were
 read from) or the reason, a `BUG-n` entry for every FAIL, what was
 **not** verified, and the `E2E:` counts. A run that did not meet the plan's condition is `BLOCKED`. Then run `validate_e2e_plan.py <plan> --results <summary>` until it exits 0. Delete the result files of aborted
-runs so they do not read as results.
+runs so they do not read as results; keep their evidence files, which a retry's `harness: <cause>` cites (the
+numbers then have a gap, which is expected).

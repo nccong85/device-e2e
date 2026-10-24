@@ -6,8 +6,10 @@ Read this before debugging a FAIL that "makes no sense". Every entry cost real d
 
 | Symptom | Cause | Fix in the harness |
 |---|---|---|
+| Screenshots all black, UI tree holds only `com.android.systemui` nodes, video file 0 bytes | The phone went to sleep and locked between runs; capture still "works" and writes useless evidence | At `READY`: wake, unlock, `keep_screen_on()`; look at the first screenshot of the run before trusting the rest |
+| A label check fails on a screen that plainly shows the label | The UI tree holds the text as rendered: a mode bar or button styled in capitals (`SCAN`) has no `Scan`; Android and iOS differ | Read the labels from the first UI-tree dump before writing the match, and compare case-insensitively (`text.casefold()`) unless case is what the case tests |
 | Android case BLOCKED, app on the launcher, no crash in logcat | Back pressed on the app's root screen (picker not open yet, or a blocking overlay hid the expected control) and the activity finished | `wait_foreground` for the picker; wait for overlays; never press Back when the foreground package is not the app |
-| Two runs' results interleave, odd timings | Stopping the monitor does not stop the suite; an old python process kept driving the same phone | `pgrep -fl <suite>` before every restart; `pkill -f "<suite> <platform>"` |
+| Two runs' results interleave, odd timings | Stopping the monitor does not stop the suite; an old python process kept driving the same phone | `<python> harness/procs.py <suite>` before every restart; `<python> harness/procs.py "<suite> <platform>" --kill` |
 | iOS cases all FAIL after regenerating fixtures | The iPhone still had the old files: Safari's replace prompt used a label the script did not know, and the old file stayed | Match every known label; raise if the prompt is still open; check thumbnails after staging |
 | iOS element "not found" although it is on screen | It is reported with an unexpected element type (e.g. `StaticText`) and was filtered out | Accept the extra type when its label shape matches; de-duplicate by position |
 | Names don't match | Grids truncate names with an ellipsis | Compare stem prefix and suffix around the ellipsis |

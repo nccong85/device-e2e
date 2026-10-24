@@ -47,16 +47,19 @@ inside a file, does not count. If `SPEC`, `PLAN`, `PLATFORMS` or `BUDGET` is mis
   that line, test the build already installed and say which one it is.
 - **Never** run `xcodebuild test` or `flutter drive` against a phone whose data matters. Both can uninstall or
   overwrite the app. WDA's own `test-without-building` runner is the exception.
-- **One device, one session.** Check with `pgrep -fl <suite>` and the WDA log that no other run holds the phone.
+- **One device, one session.** Check with the playbook's `<python> harness/procs.py <suite>` (not `pgrep`: Git Bash on Windows has none) and the WDA log that no other run holds the phone.
   If the phone is in use, locked with a passcode, or unreachable, stop and report `BLOCKED` with the reason. You
   cannot ask the owner yourself.
 - **A case result comes from the device.** Every PASS cites a file saved in `evidence/` next to the results
-  summary (`<ID>_<platform>_<n>.png`, a UI-tree dump, the app's file or a pulled result file), never only words
+  summary (`<ID>_<platform>_<n>.png`, a UI-tree dump, the app's file or a pulled result file; the playbook's
+  `harness/evidence.py` names and saves them), never only words
   such as "hit after restart"; the validator rejects a PASS without one. Do not save evidence outside the project
   (e.g. `~/Downloads`). A case whose precondition was not proven is `BLOCKED`, never PASS. Neither is a run that
-  missed the plan's condition (a quick variant, another language, the wrong build).
+  missed the plan's condition (a quick variant, another language, the wrong build). Write every retry in the
+  Evidence cell: a case that failed and then passed is a FAIL (intermittent) unless you name the `harness:` cause.
+  Record the minutes each case took in the results *Min* column.
 - **Triage before reporting.** Harness bugs are yours to fix and re-run. For an app bug, collect the root-cause
-  evidence (screenshot, logcat events, the app's diagnostics file, an independent check of the input/output file)
+  evidence (`Evidence.failure(mark)`: screenshot, UI tree, logcat or the iOS crash report; logcat events, the app's diagnostics file, an independent check of the input/output file)
   and report it. The orchestrating session fixes the app and adds the unit test that fails without the fix.
 - **Long suites run in the background**, watched with `Monitor`, which you re-arm before it expires. Do not end
   your turn while a suite you started is still running. Wait for it, or stop it with `TaskStop`, verify it is
@@ -67,18 +70,24 @@ inside a file, does not count. If `SPEC`, `PLAN`, `PLATFORMS` or `BUDGET` is mis
 
 ## Method
 1. Read the plan in `PLAN`, or write it with the playbook's `references/test-design.md` and plan template, with
-   `BUDGET` as its **Device budget**. Run `validate_e2e_plan.py <plan> --spec <spec>` until it exits 0. Without
+   `BUDGET` as its **Device budget**. Run `validate_e2e_plan.py <plan> --spec <spec>` until it exits 0 (a
+   release plan says **Mode:** release; its change-list spec has no goal rows). Without
    `PLAN_APPROVED` for this plan, stop: `BLOCKED: plan <path> needs owner approval`.
 2. Bring up the drivers, then run `READY` on each platform in `PLATFORMS`. A failure there is `BLOCKED` with the
    reason; do not start cases. Stage the fixtures on **every** device.
-3. `DRY`: one cheap case per platform until the harness passes cleanly, and each new assertion made to fail once.
+3. `DRY`: one cheap case per platform until the harness passes cleanly, and each new assertion made to fail once,
+   as the plan's *Oracle checks* say for every High case (one marked `(in <case>)` is made to fail inside that
+   case, before its result is read). A check that still passes with the fault in place is a
+   harness bug: fix it before the cases.
 4. Run the cases in `CASES` by `Order`, and stop at a case boundary when `BUDGET` runs out (the rest is
-   `NOT RUN: budget`). Triage every FAIL/BLOCKED. Re-run the cases where you fixed the harness. Then `DIAG`.
+   `NOT RUN: budget`). Triage every FAIL/BLOCKED. Re-run the cases where you fixed the harness. Then `EXPLORE`
+   if the plan has it (its charter, its time box), then `DIAG`.
 5. Clean up. Write the results summary in `RESULTS` with the plan template's results layout: the header, one row
    per planned ID and run step per platform (`PASS`/`FAIL`/`BLOCKED`/`NOT RUN` with evidence or reason), a
-   `BUG-n` entry for every FAIL, what was **not** verified, the per-run result files, and the `E2E:` line. A bug
+   `BUG-n` entry for every FAIL, what was **not** verified (every High case that is not PASS or FAIL opens a line `- <ID> <platform>: <why>`), the per-run result files, and the `E2E:` line. A bug
    found outside the plan gets a case in the plan first. Run `validate_e2e_plan.py <plan> --results <summary>`
-   until it exits 0. Delete the result files of aborted runs.
+   until it exits 0. Delete the result files of aborted runs (the suite's JSON or CSV), not their evidence
+   files: a retry's `harness: <cause>` cites them.
 
 ## Hand-off
 End with exactly:

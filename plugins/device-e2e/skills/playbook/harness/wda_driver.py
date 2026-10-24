@@ -5,6 +5,7 @@ import re
 import subprocess
 import time
 import urllib.request
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 # Fixed waits after a WDA call that returns before the screen settles. Callers that need a specific screen still
@@ -20,16 +21,21 @@ SID_FILE = Path(os.environ.get("E2E_WDA_SID_FILE", str(Path.home() / ".cache" / 
 
 def _write_private(path, text):
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    # Windows has no O_NOFOLLOW, and no fchmod before Python 3.13; the file there keeps the ACL of the
+    # user's profile folder.
+    if not hasattr(os, "O_NOFOLLOW") and path.is_symlink():
+        raise OSError(f"{path} is a symlink")
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0), 0o600)
-    os.fchmod(fd, 0o600)
-    with os.fdopen(fd, "w") as f:
+    if hasattr(os, "fchmod"):
+        os.fchmod(fd, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
         f.write(text)
 
 
 def _read_cached_sid(path):
     if path.is_symlink() or not path.is_file():
         return ""
-    sid = path.read_text().strip()
+    sid = path.read_text(encoding="utf-8").strip()
     return sid if re.fullmatch(r"[A-Za-z0-9-]{1,128}", sid) else ""
 
 
@@ -47,6 +53,21 @@ def _call(method, path, body=None, timeout=90):
     )
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.load(r)
+
+
+def _stamp(text):
+    """devicectl's lastModDate ("2026-10-24T09:07:48Z", maybe with fractions or an offset) as epoch seconds; no
+    offset means UTC."""
+    m = re.match(r"(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)(?:\.\d+)?(Z|[+-]\d\d:?\d\d)?$", text.strip())
+    if not m:
+        raise ValueError(f"unexpected lastModDate {text!r}")
+    when = datetime.strptime(m.group(1), "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc)
+    off = m.group(2) or "Z"
+    if off != "Z":
+        sign = 1 if off[0] == "+" else -1
+        hh, mm = int(off[1:3]), int(off[-2:])
+        when -= sign * timedelta(hours=hh, minutes=mm)
+    return when.timestamp()
 
 
 class IosDriver:
@@ -198,6 +219,62 @@ class IosDriver:
         Path(path).write_bytes(base64.b64decode(_call("GET", "/screenshot")["value"]))
         return path
 
+    tree_ext = "xml"
+
+    def dump_tree(self, path):
+        """WDA's XML source: the tree the check read, kept next to the screenshot."""
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        Path(path).write_text(_call("GET", "/source", timeout=120)["value"], encoding="utf-8")
+        return Path(path)
+
+    def visible(self, el):
+        """Inside the window with a size: an element scrolled away keeps its frame off screen. An element covered
+        by another one still counts, so keep a screenshot of it."""
+        s = self.size()
+        return el["w"] > 0 and el["h"] > 0 and el["x"] >= 0 and el["y"] >= 0 and \
+            el["x"] + el["w"] <= s["width"] and el["y"] + el["h"] <= s["height"]
+
+    def log_mark(self, offset=0):
+        return time.time() + offset
+
+    def device_log(self, ev, since):
+        """The app's crash reports (.ips) written since `since`, as evidence/<case>_ios_<n>.ips. WDA cannot film
+        the screen or read the system log of a real device; use Evidence.burst for a transition."""
+        udid = self.udid or _env("E2E_IOS_UDID")
+        listing = Path(ev.path("json"))
+        subprocess.run(
+            ["xcrun", "devicectl", "device", "info", "files", "--device", udid, "--domain-type", "systemCrashLogs",
+             "-t", "90", "-q", "-j", str(listing)],
+            check=True, capture_output=True,
+        )
+        files = json.loads(listing.read_text(encoding="utf-8"))["result"]["files"]
+        listing.unlink()
+        out = []
+        for f in files:
+            stamp = f.get("metadata", {}).get("lastModDate", "")
+            if not f["name"].endswith(".ips") or not stamp:
+                continue
+            when = _stamp(stamp)
+            if when < since - 1:
+                continue
+            dest = ev.path("ips")
+            subprocess.run(
+                ["xcrun", "devicectl", "device", "copy", "from", "--device", udid, "--domain-type", "systemCrashLogs",
+                 "--source", f["relativePath"], "--destination", str(dest), "-t", "90", "-q"],
+                check=True, capture_output=True,
+            )
+            # The first line of a report is a JSON header naming the app.
+            head = dest.read_text(encoding="utf-8", errors="replace").split("\n", 1)[0]
+            try:
+                bundle = json.loads(head).get("bundleID", "")
+            except ValueError:
+                bundle = ""
+            if bundle == self.app:
+                out.append(dest)
+            else:
+                dest.unlink()
+        return out
+
     def pull_file(self, container_path, dest):
         Path(dest).parent.mkdir(parents=True, exist_ok=True)
         subprocess.run(
@@ -213,4 +290,4 @@ class IosDriver:
 
     def pull_diagnostics(self, dest):
         self.pull_file(_env("E2E_IOS_DIAG_PATH"), dest)
-        return json.loads(Path(dest).read_text())
+        return json.loads(Path(dest).read_text(encoding="utf-8"))

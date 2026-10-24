@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import time
 import xml.etree.ElementTree as ET
+from contextlib import contextmanager
 from pathlib import Path
 
 ADB_KEYBOARD = "com.android.adbkeyboard/.AdbIME"
@@ -21,6 +22,8 @@ IME_WAIT = 1.5     # an IME switch rebinds the input connection
 BROADCAST_WAIT = 0.5  # ADB Keyboard commits the broadcast text
 DUMP_RETRY_WAIT = 1   # uiautomator dump fails while the screen is animating
 POLL = 0.8         # interval of every wait-for loop
+RECORD_START_WAIT = 1  # screenrecord opens the encoder before the first frame
+RECORD_STOP_WAIT = 10  # screenrecord finishes the mp4 after SIGINT
 
 
 def _env(name):
@@ -34,14 +37,24 @@ def _adb_path():
     explicit = os.environ.get("E2E_ADB", "").strip()
     if explicit:
         return explicit
+    # ANDROID_HOME is what the SDK tools read; the defaults are Android Studio's on macOS, Linux and Windows.
+    # shutil.which adds .exe on Windows.
+    sdk_home = os.environ.get("ANDROID_HOME", "").strip()
+    if sdk_home:
+        found = shutil.which("adb", path=str(Path(sdk_home) / "platform-tools"))
+        if found:
+            return found
     found = shutil.which("adb")
     if found:
         return found
-    for sdk in (os.environ.get("ANDROID_HOME", ""), str(Path.home() / "Library/Android/sdk"), str(Path.home() / "Android/Sdk")):
-        candidate = Path(sdk) / "platform-tools" / "adb"
-        if sdk and candidate.exists():
-            return str(candidate)
-    raise RuntimeError("adb not found: set E2E_ADB or put platform-tools on PATH")
+    defaults = [Path.home() / "Library/Android/sdk", Path.home() / "Android/Sdk"]
+    if os.environ.get("LOCALAPPDATA"):
+        defaults.append(Path(os.environ["LOCALAPPDATA"]) / "Android" / "Sdk")
+    for sdk in defaults:
+        found = shutil.which("adb", path=str(sdk / "platform-tools"))
+        if found:
+            return found
+    raise RuntimeError("adb not found: set E2E_ADB or ANDROID_HOME, or put platform-tools on PATH")
 
 
 def _safe_fixture_dir(path):
@@ -62,6 +75,26 @@ def _safe_app_id(app):
 
 class UnicodeInputUnavailable(RuntimeError):
     pass
+
+
+# Errors from other processes kept in the app's log: a crash, an ANR or a kill. Vendor errors (HyperOS logs
+# thousands of display and charger errors in half an hour) are not.
+_CRASH_TAGS = {"AndroidRuntime", "ActivityManager", "ActivityTaskManager", "lowmemorykiller", "libc", "DEBUG"}
+
+
+def _app_lines(log, app, pids=()):
+    """The threadtime lines of `log` that concern `app` (see AndroidDriver.device_log)."""
+    lines = log.splitlines()
+    # The app's own processes: those running now, and each one started in the window ("Start proc 3221:<app>/u0a1").
+    # Not every pid whose line names the app: system_server and the launcher name it all the time.
+    pids = set(pids) | set(re.findall(rf"\b(\d+):{re.escape(app)}\b", log))
+    # threadtime: "10-24 15:47:54.014  3221  3570 E Tag: message" -> pid is field 2, level field 4
+    keep = []
+    for ln in lines:
+        f = ln.split()
+        if app in ln or (len(f) > 5 and (f[2] in pids or f[4] == "F" or (f[4] == "E" and f[5].rstrip(":") in _CRASH_TAGS))):
+            keep.append(ln)
+    return "\n".join(keep) + ("\n" if keep else "")
 
 
 class AndroidDriver:
@@ -146,14 +179,22 @@ class AndroidDriver:
             raise UnicodeInputUnavailable(text)
         self._shell("input text " + shlex.quote(text.replace(" ", "%s")))
 
-    def elements(self):
+    def _dump_xml(self):
         for _ in range(3):
             out = self._shell("uiautomator dump /sdcard/e2e_window.xml", check=False)
             if "dumped" in out:
                 break
             time.sleep(DUMP_RETRY_WAIT)
         xml = self._shell("cat /sdcard/e2e_window.xml")
-        root = ET.fromstring(xml[xml.index("<?xml"):] if "<?xml" in xml else xml)
+        xml = xml[xml.index("<?xml"):] if "<?xml" in xml else xml
+        # The root node spans the screen as it is now; `wm size` is the portrait size even in landscape.
+        m = re.search(r'bounds="\[0,0\]\[(\d+),(\d+)\]"', xml)
+        if m:
+            self._screen = int(m.group(1)), int(m.group(2))
+        return xml
+
+    def elements(self):
+        root = ET.fromstring(self._dump_xml())
         out = []
         for node in root.iter("node"):
             m = re.match(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", node.get("bounds", ""))
@@ -210,6 +251,69 @@ class AndroidDriver:
         Path(path).write_bytes(data)
         return path
 
+    tree_ext = "xml"
+
+    def dump_tree(self, path):
+        """The raw uiautomator dump: the tree the check read, kept next to the screenshot."""
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        Path(path).write_text(self._dump_xml(), encoding="utf-8")
+        return Path(path)
+
+    def visible(self, el):
+        """On screen with a size. uiautomator already leaves out views the system hides; an element covered by
+        another one still counts, so keep a screenshot of it. The screen is the one the element's dump saw."""
+        w, h = getattr(self, "_screen", None) or self.size()
+        return el["w"] > 0 and el["h"] > 0 and el["x"] >= 0 and el["y"] >= 0 and \
+            el["x"] + el["w"] <= w and el["y"] + el["h"] <= h
+
+    def log_mark(self, offset=0):
+        """The phone's clock plus `offset` seconds, for device_log: logcat stamps lines with it, not the host's."""
+        return str(int(self._shell("date +%s").strip()) + int(offset))
+
+    def device_log(self, ev, since, full=False):
+        """logcat (main, system, crash) since a log_mark, as evidence/<case>_android_<n>.log. By default only the
+        lines that concern the app: its processes (running now or started since the mark, so a restart is kept), lines
+        naming the package (am_proc_died, ANR, low-memory kills), every fatal, and other processes' crash or kill
+        errors. `full=True` keeps it all
+        (megabytes)."""
+        if not str(since).isdigit():
+            raise ValueError(f"since={since!r} is not a log_mark")
+        path = ev.path("log")
+        out = self._adb("logcat", "-d", "-v", "threadtime", "-b", "main,system,crash", "-t", f"{since}.000")
+        if not full:
+            out = _app_lines(out, self.app, self._shell(f"pidof {self.app}", check=False).split())
+        path.write_text(out, encoding="utf-8")
+        return [path]
+
+    @contextmanager
+    def recording(self, dest, limit=180):
+        """Film the block: `with a.recording(ev.path("mp4")): ...`. screenrecord stops at `limit` seconds (180 at
+        most), records no audio, and cuts off part of the screen if it rotates."""
+        remote = "/sdcard/e2e_rec.mp4"
+        limit = max(1, min(int(limit), 180))
+        proc = subprocess.Popen(
+            [self.adb_bin, "-s", self.serial, "shell", f"screenrecord --bugreport --time-limit {limit} {remote}"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        time.sleep(RECORD_START_WAIT)
+        try:
+            yield Path(dest)
+        finally:
+            # SIGINT lets screenrecord write the mp4 index; killing adb on the host leaves an unplayable file.
+            self._shell("pkill -INT screenrecord", check=False)
+            try:
+                proc.wait(timeout=RECORD_STOP_WAIT)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+            time.sleep(1)
+            try:
+                self.pull_file(remote, dest)
+            except Exception as e:
+                # Raising here would hide the case's own failure; the missing file is the record of this one.
+                print(f"recording: pull of {remote} failed: {e}")
+            finally:
+                self._shell(f"rm -f {remote}", check=False)
+
     def pull_file(self, device_path, dest):
         Path(dest).parent.mkdir(parents=True, exist_ok=True)
         self._adb("pull", device_path, str(dest))
@@ -217,7 +321,7 @@ class AndroidDriver:
 
     def pull_diagnostics(self, dest):
         self.pull_file(_env("E2E_ANDROID_DIAG_PATH"), dest)
-        return json.loads(Path(dest).read_text())
+        return json.loads(Path(dest).read_text(encoding="utf-8"))
 
     def stage_fixtures(self, local_dir, names):
         self._shell(f"mkdir -p {shlex.quote(self.fixture_dir)}")

@@ -31,3 +31,18 @@ jobs:
         run: |
           claude plugin validate --strict .
           claude plugin validate --strict plugins/device-e2e
+
+  # The harness also runs on a Windows host that drives an Android phone over adb.
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # 3.12 has no os.fchmod on Windows; the harness must not need it.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Tests
+        shell: bash
+        run: bash tests/run.sh

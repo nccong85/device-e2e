@@ -27,7 +27,8 @@ WebDriverAgent checkout: `<path>`. adb: `<path, or "on PATH">` (`E2E_ADB`).
 |---|---|
 | Drivers | the skill's `harness/wda_driver.py` and `harness/adb_driver.py`, or a copy in `<path>` |
 | App flows | `<path to the project's app-flows module>` |
-| Suite | `<path>` — run as `python3 -u <path> ios|android <case ids>` |
+| Python | `<python3 on macOS/Linux; python -X utf8 or py -3 -X utf8 on Windows, where python3 is often the Microsoft Store stub and a print of non-ASCII text into a pipe or log fails without -X utf8>` |
+| Suite | `<path>` — run as `<python> -u <path> ios|android <case ids>` |
 | Fixtures | generator `<path>`, output `<folder>`; Android device folder `E2E_ANDROID_FIXTURE_DIR=<path>` |
 | iOS fixture HTTP server | `<command and port>` |
 
